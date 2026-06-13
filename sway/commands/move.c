@@ -467,7 +467,38 @@ static struct cmd_results *cmd_move_container(bool no_auto_back_and_forth,
 				}
 			}
 		} else {
-			if (strcasecmp(argv[1], "number") == 0) {
+			if (strcasecmp(argv[1], "group") == 0 && workspace_groups_enabled()) {
+				if (argc < 4) {
+					return cmd_results_new(CMD_INVALID, "%s", expected_syntax);
+				}
+				const char *group = argv[2];
+				if (!workspace_group_exists(group)) {
+					return cmd_results_new(CMD_INVALID,
+							"Workspace group '%s' is not configured", group);
+				}
+				if (strcasecmp(argv[3], "number") == 0) {
+					if (argc < 5) {
+						return cmd_results_new(CMD_INVALID, "%s", expected_syntax);
+					}
+					if (!isdigit(argv[4][0])) {
+						return cmd_results_new(CMD_INVALID,
+								"Invalid workspace number '%s'", argv[4]);
+					}
+					char *display_name = join_args(argv + 4, argc - 4);
+					ws = workspace_by_number_in_group(display_name, group);
+					ws_name = workspace_group_make_name(group, display_name);
+					free(display_name);
+				} else {
+					char *display_name = join_args(argv + 3, argc - 3);
+					ws = workspace_by_display_in_group(display_name, group);
+					ws_name = workspace_group_make_name(group, display_name);
+					free(display_name);
+				}
+				if (!ws_name) {
+					return cmd_results_new(CMD_FAILURE,
+							"Unable to allocate grouped workspace name");
+				}
+			} else if (strcasecmp(argv[1], "number") == 0) {
 				// move [window|container] [to] "workspace number x"
 				if (argc < 3) {
 					return cmd_results_new(CMD_INVALID, "%s", expected_syntax);
@@ -476,8 +507,20 @@ static struct cmd_results *cmd_move_container(bool no_auto_back_and_forth,
 					return cmd_results_new(CMD_INVALID,
 							"Invalid workspace number '%s'", argv[2]);
 				}
-				ws_name = join_args(argv + 2, argc - 2);
-				ws = workspace_by_number(ws_name);
+				char *display_name = join_args(argv + 2, argc - 2);
+				const char *group = workspace_group_get_active();
+				if (group) {
+					ws = workspace_by_number_in_group(display_name, group);
+					ws_name = workspace_group_make_name(group, display_name);
+				} else {
+					ws_name = strdup(display_name);
+					ws = workspace_by_number(ws_name);
+				}
+				free(display_name);
+				if (!ws_name) {
+					return cmd_results_new(CMD_FAILURE,
+							"Unable to allocate workspace name");
+				}
 			} else {
 				ws_name = join_args(argv + 1, argc - 1);
 				ws = workspace_by_name(ws_name);

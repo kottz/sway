@@ -130,6 +130,20 @@ has the following properties:
 |- name
 :  string
 :  The name of the workspace
+|- display_name
+:  string
+:  The display name of the workspace. For grouped workspaces this omits the
+   internal group prefix
+|- group
+:  string|null
+:  The workspace group name, or null when the workspace is not grouped
+|- active_group
+:  string|null
+:  The currently active workspace group, or null when workspace groups are not
+   configured
+|- group_active
+:  boolean
+:  Whether this workspace belongs to the currently active workspace group
 |- visible
 :  boolean
 :  Whether the workspace is currently visible on any output
@@ -379,6 +393,22 @@ node and will have the following properties:
 :  integer
 :  (Only containers and windows) The fullscreen mode of the node. 0 means none, 1 means
    full workspace, and 2 means global fullscreen
+|- workspace_name
+:  string|null
+:  (Only containers and windows) The internal name of the workspace containing
+   this container, or null when the container is not attached to a workspace
+|- workspace_display_name
+:  string|null
+:  (Only containers and windows) The display name of the workspace containing
+   this container, or null when the container is not attached to a workspace
+|- workspace_group
+:  string|null
+:  (Only containers and windows) The workspace group containing this container,
+   or null when the container is not on a grouped workspace
+|- workspace_group_active
+:  boolean
+:  (Only containers and windows) Whether this container's workspace belongs to
+   the current active workspace group
 |- floating
 :  string
 :  Floating state of container. Can be either "auto_off" or "user_on"

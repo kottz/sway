@@ -34,6 +34,8 @@ struct sway_workspace {
 	struct sway_container *fullscreen;
 
 	char *name;
+	char *display_name;
+	char *group;
 	char *representation;
 
 	double x, y;
@@ -77,7 +79,37 @@ bool workspace_switch(struct sway_workspace *workspace);
 
 struct sway_workspace *workspace_by_number(const char* name);
 
+struct sway_workspace *workspace_by_number_in_group(const char *name,
+		const char *group);
+
+struct sway_workspace *workspace_by_display_in_group(const char *display_name,
+		const char *group);
+
 struct sway_workspace *workspace_by_name(const char*);
+
+bool workspace_groups_enabled(void);
+
+bool workspace_group_exists(const char *group);
+
+const char *workspace_group_get_active(void);
+
+bool workspace_group_set_active(const char *group);
+
+const char *workspace_group_toggle_active(void);
+
+const char *workspace_group_get_last_display_name(const char *group);
+
+void workspace_group_remember_workspace(struct sway_workspace *workspace);
+
+void workspace_group_refresh_metadata(void);
+
+char *workspace_group_make_name(const char *group, const char *display_name);
+
+const char *workspace_get_display_name(struct sway_workspace *workspace);
+
+int workspace_get_group_index(const char *group);
+
+void workspace_update_group_metadata(struct sway_workspace *workspace);
 
 struct sway_workspace *workspace_output_next(struct sway_workspace *current);
 

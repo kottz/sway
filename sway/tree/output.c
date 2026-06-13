@@ -387,14 +387,27 @@ struct sway_container *output_find_container(struct sway_output *output,
 static int sort_workspace_cmp_qsort(const void *_a, const void *_b) {
 	struct sway_workspace *a = *(void **)_a;
 	struct sway_workspace *b = *(void **)_b;
+	int a_group = workspace_get_group_index(a->group);
+	int b_group = workspace_get_group_index(b->group);
+	if (a_group != b_group) {
+		if (a_group < 0) {
+			return 1;
+		}
+		if (b_group < 0) {
+			return -1;
+		}
+		return (a_group < b_group) ? -1 : 1;
+	}
 
-	if (isdigit(a->name[0]) && isdigit(b->name[0])) {
-		int a_num = strtol(a->name, NULL, 10);
-		int b_num = strtol(b->name, NULL, 10);
+	const char *a_name = workspace_get_display_name(a);
+	const char *b_name = workspace_get_display_name(b);
+	if (isdigit(a_name[0]) && isdigit(b_name[0])) {
+		int a_num = strtol(a_name, NULL, 10);
+		int b_num = strtol(b_name, NULL, 10);
 		return (a_num < b_num) ? -1 : (a_num > b_num);
-	} else if (isdigit(a->name[0])) {
+	} else if (isdigit(a_name[0])) {
 		return -1;
-	} else if (isdigit(b->name[0])) {
+	} else if (isdigit(b_name[0])) {
 		return 1;
 	}
 	return 0;

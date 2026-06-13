@@ -18,6 +18,7 @@
 #include "sway/tree/arrange.h"
 #include "sway/tree/container.h"
 #include "sway/tree/node.h"
+#include "sway/tree/root.h"
 #include "sway/tree/view.h"
 #include "sway/tree/workspace.h"
 #include "list.h"
@@ -150,9 +151,234 @@ struct workspace_config *workspace_find_config(const char *ws_name) {
 	return NULL;
 }
 
+bool workspace_groups_enabled(void) {
+	return config && config->workspace_groups &&
+		config->workspace_groups->length > 0;
+}
+
+int workspace_get_group_index(const char *group) {
+	if (!workspace_groups_enabled() || !group) {
+		return -1;
+	}
+	for (int i = 0; i < config->workspace_groups->length; ++i) {
+		const char *configured = config->workspace_groups->items[i];
+		if (strcasecmp(configured, group) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+bool workspace_group_exists(const char *group) {
+	return workspace_get_group_index(group) >= 0;
+}
+
+bool workspace_group_set_active(const char *group) {
+	if (!workspace_group_exists(group)) {
+		return false;
+	}
+	if (config->active_workspace_group &&
+			strcasecmp(config->active_workspace_group, group) == 0) {
+		return true;
+	}
+	free(config->active_workspace_group);
+	config->active_workspace_group = strdup(group);
+	return config->active_workspace_group != NULL;
+}
+
+const char *workspace_group_get_active(void) {
+	if (!workspace_groups_enabled()) {
+		return NULL;
+	}
+	if (config->active_workspace_group &&
+			workspace_group_exists(config->active_workspace_group)) {
+		return config->active_workspace_group;
+	}
+	if (config->workspace_group_default &&
+			workspace_group_exists(config->workspace_group_default)) {
+		workspace_group_set_active(config->workspace_group_default);
+		return config->active_workspace_group;
+	}
+	const char *first = config->workspace_groups->items[0];
+	workspace_group_set_active(first);
+	return config->active_workspace_group;
+}
+
+const char *workspace_group_toggle_active(void) {
+	if (!workspace_groups_enabled()) {
+		return NULL;
+	}
+	const char *active = workspace_group_get_active();
+	int index = workspace_get_group_index(active);
+	if (index < 0) {
+		return NULL;
+	}
+	int next = (index + 1) % config->workspace_groups->length;
+	const char *group = config->workspace_groups->items[next];
+	if (!workspace_group_set_active(group)) {
+		return NULL;
+	}
+	return config->active_workspace_group;
+}
+
+static struct workspace_group_state *workspace_group_state_for(
+		const char *group, bool create) {
+	if (!config || !config->workspace_group_states || !group) {
+		return NULL;
+	}
+	for (int i = 0; i < config->workspace_group_states->length; ++i) {
+		struct workspace_group_state *state =
+			config->workspace_group_states->items[i];
+		if (state->group && strcasecmp(state->group, group) == 0) {
+			return state;
+		}
+	}
+	if (!create) {
+		return NULL;
+	}
+
+	struct workspace_group_state *state = calloc(1, sizeof(*state));
+	if (!state) {
+		return NULL;
+	}
+	state->group = strdup(group);
+	if (!state->group) {
+		free(state);
+		return NULL;
+	}
+	list_add(config->workspace_group_states, state);
+	return state;
+}
+
+const char *workspace_group_get_last_display_name(const char *group) {
+	struct workspace_group_state *state =
+		workspace_group_state_for(group, false);
+	return state ? state->display_name : NULL;
+}
+
+void workspace_group_remember_workspace(struct sway_workspace *workspace) {
+	if (!workspace || !workspace->group || !workspace_groups_enabled()) {
+		return;
+	}
+	struct workspace_group_state *state =
+		workspace_group_state_for(workspace->group, true);
+	if (!state) {
+		sway_log(SWAY_ERROR, "Unable to allocate workspace group state");
+		return;
+	}
+
+	const char *display_name = workspace_get_display_name(workspace);
+	if (!display_name || !*display_name) {
+		return;
+	}
+	char *copy = strdup(display_name);
+	if (!copy) {
+		sway_log(SWAY_ERROR, "Unable to allocate workspace group state");
+		return;
+	}
+	free(state->display_name);
+	state->display_name = copy;
+}
+
+static void workspace_group_refresh_metadata_iterator(
+		struct sway_workspace *workspace, void *data) {
+	workspace_update_group_metadata(workspace);
+}
+
+void workspace_group_refresh_metadata(void) {
+	if (!root) {
+		return;
+	}
+
+	root_for_each_workspace(workspace_group_refresh_metadata_iterator, NULL);
+	for (int i = 0; i < root->outputs->length; ++i) {
+		struct sway_output *output = root->outputs->items[i];
+		output_sort_workspaces(output);
+	}
+
+	struct sway_seat *seat = input_manager_get_default_seat();
+	struct sway_workspace *focused = seat_get_focused_workspace(seat);
+	if (focused && focused->group) {
+		workspace_group_remember_workspace(focused);
+		workspace_group_set_active(focused->group);
+	} else {
+		workspace_group_get_active();
+	}
+}
+
+char *workspace_group_make_name(const char *group, const char *display_name) {
+	if (!group || !display_name) {
+		return NULL;
+	}
+	int len = snprintf(NULL, 0, "%s:%s", group, display_name);
+	if (len < 0) {
+		return NULL;
+	}
+	char *name = malloc(len + 1);
+	if (!name) {
+		return NULL;
+	}
+	snprintf(name, len + 1, "%s:%s", group, display_name);
+	return name;
+}
+
+const char *workspace_get_display_name(struct sway_workspace *workspace) {
+	return workspace->display_name ? workspace->display_name :
+		(workspace->name ? workspace->name : "");
+}
+
+void workspace_update_group_metadata(struct sway_workspace *ws) {
+	free(ws->display_name);
+	free(ws->group);
+	ws->display_name = NULL;
+	ws->group = NULL;
+
+	if (!ws->name) {
+		return;
+	}
+	ws->display_name = strdup(ws->name);
+	if (!ws->display_name || !workspace_groups_enabled()) {
+		return;
+	}
+
+	const char *separator = strchr(ws->name, ':');
+	if (!separator || separator == ws->name || separator[1] == '\0') {
+		return;
+	}
+
+	size_t group_len = separator - ws->name;
+	char *group = strndup(ws->name, group_len);
+	if (!group) {
+		return;
+	}
+	if (!workspace_group_exists(group)) {
+		free(group);
+		return;
+	}
+
+	free(ws->group);
+	free(ws->display_name);
+	ws->group = group;
+	ws->display_name = strdup(separator + 1);
+	if (!ws->display_name) {
+		ws->display_name = strdup(ws->name);
+	}
+}
+
 struct sway_output *workspace_get_initial_output(const char *name) {
 	// Check workspace configs for a workspace<->output pair
 	struct workspace_config *wsc = workspace_find_config(name);
+	if (!wsc && workspace_groups_enabled()) {
+		const char *separator = strchr(name, ':');
+		if (separator && separator != name && separator[1] != '\0') {
+			size_t group_len = separator - name;
+			char *group = strndup(name, group_len);
+			if (group && workspace_group_exists(group)) {
+				wsc = workspace_find_config(separator + 1);
+			}
+			free(group);
+		}
+	}
 	if (wsc) {
 		for (int i = 0; i < wsc->outputs->length; i++) {
 			struct sway_output *output =
@@ -215,6 +441,7 @@ struct sway_workspace *workspace_create(struct sway_output *output,
 	}
 
 	ws->name = strdup(name);
+	workspace_update_group_metadata(ws);
 	ws->prev_split_layout = L_NONE;
 	ws->layout = output_get_default_layout(output);
 	ws->floating = create_list();
@@ -225,6 +452,9 @@ struct sway_workspace *workspace_create(struct sway_output *output,
 	ws->gaps_inner = config->gaps_inner;
 	if (name) {
 		struct workspace_config *wsc = workspace_find_config(name);
+		if (!wsc && ws->group) {
+			wsc = workspace_find_config(workspace_get_display_name(ws));
+		}
 		if (wsc) {
 			if (wsc->gaps_outer.top != INT_MIN) {
 				ws->gaps_outer.top = wsc->gaps_outer.top;
@@ -287,6 +517,8 @@ void workspace_destroy(struct sway_workspace *workspace) {
 	wlr_scene_node_destroy(&workspace->layers.fullscreen->node);
 
 	free(workspace->name);
+	free(workspace->display_name);
+	free(workspace->group);
 	free(workspace->representation);
 	list_free_items_and_destroy(workspace->output_priority);
 	list_free(workspace->floating);
@@ -381,6 +613,8 @@ static void workspace_name_from_binding(const struct sway_binding * binding,
 				strcmp(_target, "next_on_output") == 0 ||
 				strcmp(_target, "prev_on_output") == 0 ||
 				strcmp(_target, "number") == 0 ||
+				strcmp(_target, "group") == 0 ||
+				has_prefix(_target, "group ") ||
 				strcmp(_target, "back_and_forth") == 0 ||
 				strcmp(_target, "current") == 0) {
 			free(_target);
@@ -403,6 +637,19 @@ static void workspace_name_from_binding(const struct sway_binding * binding,
 				free(_target);
 				free(dup);
 				return;
+			}
+			const char *group = workspace_group_get_active();
+			if (group) {
+				char *grouped_target = workspace_group_make_name(group, _target);
+				if (!grouped_target) {
+					free(_target);
+					free(dup);
+					return;
+				}
+				free(_target);
+				_target = grouped_target;
+				sway_log(SWAY_DEBUG, "Isolated grouped workspace name: '%s'",
+						_target);
 			}
 		}
 
@@ -490,9 +737,7 @@ char *workspace_next_name(const char *output_name) {
 	return strdup(name);
 }
 
-static bool _workspace_by_number(struct sway_workspace *ws, void *data) {
-	char *name = data;
-	char *ws_name = ws->name;
+static bool workspace_number_matches(const char *ws_name, const char *name) {
 	while (isdigit(*name)) {
 		if (*name++ != *ws_name++) {
 			return false;
@@ -501,8 +746,53 @@ static bool _workspace_by_number(struct sway_workspace *ws, void *data) {
 	return !isdigit(*ws_name);
 }
 
+static bool _workspace_by_number(struct sway_workspace *ws, void *data) {
+	return workspace_number_matches(workspace_get_display_name(ws), data);
+}
+
 struct sway_workspace *workspace_by_number(const char* name) {
+	const char *group = workspace_group_get_active();
+	if (group) {
+		return workspace_by_number_in_group(name, group);
+	}
 	return root_find_workspace(_workspace_by_number, (void *) name);
+}
+
+struct workspace_group_query {
+	const char *value;
+	const char *group;
+};
+
+static bool _workspace_by_number_in_group(struct sway_workspace *ws, void *data) {
+	struct workspace_group_query *query = data;
+	return query->group && ws->group &&
+		strcasecmp(ws->group, query->group) == 0 &&
+		workspace_number_matches(workspace_get_display_name(ws), query->value);
+}
+
+struct sway_workspace *workspace_by_number_in_group(const char *name,
+		const char *group) {
+	struct workspace_group_query query = {
+		.value = name,
+		.group = group,
+	};
+	return root_find_workspace(_workspace_by_number_in_group, &query);
+}
+
+static bool _workspace_by_display_in_group(struct sway_workspace *ws, void *data) {
+	struct workspace_group_query *query = data;
+	return query->group && ws->group &&
+		strcasecmp(ws->group, query->group) == 0 &&
+		strcasecmp(workspace_get_display_name(ws), query->value) == 0;
+}
+
+struct sway_workspace *workspace_by_display_in_group(const char *display_name,
+		const char *group) {
+	struct workspace_group_query query = {
+		.value = display_name,
+		.group = group,
+	};
+	return root_find_workspace(_workspace_by_display_in_group, &query);
 }
 
 static bool _workspace_by_name(struct sway_workspace *ws, void *data) {
@@ -538,11 +828,21 @@ struct sway_workspace *workspace_by_name(const char *name) {
 static int workspace_get_number(struct sway_workspace *workspace) {
 	char *endptr = NULL;
 	errno = 0;
-	long long n = strtoll(workspace->name, &endptr, 10);
-	if (errno != 0 || n > INT32_MAX || n < 0 || endptr == workspace->name) {
+	const char *name = workspace_get_display_name(workspace);
+	long long n = strtoll(name, &endptr, 10);
+	if (errno != 0 || n > INT32_MAX || n < 0 || endptr == name) {
 		n = -1;
 	}
 	return n;
+}
+
+static bool workspace_same_navigation_group(struct sway_workspace *current,
+		struct sway_workspace *candidate) {
+	if (!current->group) {
+		return true;
+	}
+	return candidate->group &&
+		strcasecmp(current->group, candidate->group) == 0;
 }
 
 struct sway_workspace *workspace_prev(struct sway_workspace *workspace) {
@@ -556,6 +856,9 @@ struct sway_workspace *workspace_prev(struct sway_workspace *workspace) {
 			struct sway_output *output = root->outputs->items[i];
 			for (int j = output->workspaces->length - 1; j >= 0; j--) {
 				struct sway_workspace *ws = output->workspaces->items[j];
+				if (!workspace_same_navigation_group(workspace, ws)) {
+					continue;
+				}
 				int wsn = workspace_get_number(ws);
 				if (!last) {
 					// The first workspace in reverse order
@@ -581,6 +884,9 @@ struct sway_workspace *workspace_prev(struct sway_workspace *workspace) {
 			struct sway_output *output = root->outputs->items[i];
 			for (int j = output->workspaces->length - 1; j >= 0; j--) {
 				struct sway_workspace *ws = output->workspaces->items[j];
+				if (!workspace_same_navigation_group(workspace, ws)) {
+					continue;
+				}
 				int wsn = workspace_get_number(ws);
 				if (!last || (wsn >= 0 && wsn > lastn)) {
 					// The greatest numbered (or last) workspace
@@ -621,6 +927,9 @@ struct sway_workspace *workspace_next(struct sway_workspace *workspace) {
 			struct sway_output *output = root->outputs->items[i];
 			for (int j = 0; j < output->workspaces->length; j++) {
 				struct sway_workspace *ws = output->workspaces->items[j];
+				if (!workspace_same_navigation_group(workspace, ws)) {
+					continue;
+				}
 				int wsn = workspace_get_number(ws);
 				if (!first) {
 					// The first named workspace
@@ -646,6 +955,9 @@ struct sway_workspace *workspace_next(struct sway_workspace *workspace) {
 			struct sway_output *output = root->outputs->items[i];
 			for (int j = 0; j < output->workspaces->length; j++) {
 				struct sway_workspace *ws = output->workspaces->items[j];
+				if (!workspace_same_navigation_group(workspace, ws)) {
+					continue;
+				}
 				int wsn = workspace_get_number(ws);
 				if (!first || (wsn >= 0 && wsn < firstn)) {
 					// The first (or least numbered) workspace
@@ -693,8 +1005,14 @@ static struct sway_workspace *workspace_output_prev_next_impl(
 	}
 
 	int index = list_find(output->workspaces, workspace);
-	size_t new_index = wrap(index + dir, output->workspaces->length);
-	return output->workspaces->items[new_index];
+	for (int i = 1; i <= output->workspaces->length; ++i) {
+		size_t new_index = wrap(index + dir * i, output->workspaces->length);
+		struct sway_workspace *candidate = output->workspaces->items[new_index];
+		if (workspace_same_navigation_group(workspace, candidate)) {
+			return candidate;
+		}
+	}
+	return workspace;
 }
 
 

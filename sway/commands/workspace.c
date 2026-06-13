@@ -121,6 +121,51 @@ static struct cmd_results *cmd_workspace_gaps(int argc, char **argv,
 	return error;
 }
 
+static struct cmd_results *cmd_workspace_group(int argc, char **argv,
+		struct sway_seat *seat) {
+	if (argc != 2) {
+		return cmd_results_new(CMD_INVALID,
+				"Expected 'workspace group <group|toggle>'");
+	}
+
+	struct sway_workspace *current = seat_get_focused_workspace(seat);
+	workspace_group_remember_workspace(current);
+
+	const char *group = NULL;
+	if (strcasecmp(argv[1], "toggle") == 0) {
+		group = workspace_group_toggle_active();
+	} else if (workspace_group_set_active(argv[1])) {
+		group = workspace_group_get_active();
+	}
+	if (!group) {
+		return cmd_results_new(CMD_INVALID,
+				"Workspace group '%s' is not configured", argv[1]);
+	}
+
+	const char *display_name =
+		workspace_group_get_last_display_name(group);
+	if (!display_name || !*display_name) {
+		display_name = "1";
+	}
+	struct sway_workspace *ws =
+		workspace_by_display_in_group(display_name, group);
+	if (!ws) {
+		char *name = workspace_group_make_name(group, display_name);
+		if (!name) {
+			return cmd_results_new(CMD_FAILURE,
+					"Unable to allocate grouped workspace name");
+		}
+		ws = workspace_create(NULL, name);
+		free(name);
+	}
+	if (!ws) {
+		return cmd_results_new(CMD_FAILURE, "No workspace to switch to");
+	}
+	workspace_switch(ws);
+	seat_consider_warp_to_focus(seat);
+	return cmd_results_new(CMD_SUCCESS, NULL);
+}
+
 struct cmd_results *cmd_workspace(int argc, char **argv) {
 	struct cmd_results *error = NULL;
 	if ((error = checkarg(argc, "workspace", EXPECTED_AT_LEAST, 1))) {
@@ -189,7 +234,9 @@ struct cmd_results *cmd_workspace(int argc, char **argv) {
 		struct sway_seat *seat = config->handler_context.seat;
 
 		struct sway_workspace *ws = NULL;
-		if (strcasecmp(argv[0], "number") == 0) {
+		if (strcasecmp(argv[0], "group") == 0 && workspace_groups_enabled()) {
+			return cmd_workspace_group(argc, argv, seat);
+		} else if (strcasecmp(argv[0], "number") == 0) {
 			if (argc < 2) {
 				return cmd_results_new(CMD_INVALID,
 						"Expected workspace number");
@@ -198,9 +245,16 @@ struct cmd_results *cmd_workspace(int argc, char **argv) {
 				return cmd_results_new(CMD_INVALID,
 						"Invalid workspace number '%s'", argv[1]);
 			}
-			if (!(ws = workspace_by_number(argv[1]))) {
-				char *name = join_args(argv + 1, argc - 1);
-				ws = workspace_create(NULL, name);
+			const char *group = workspace_group_get_active();
+			if (!(ws = group ?
+						workspace_by_number_in_group(argv[1], group) :
+						workspace_by_number(argv[1]))) {
+				char *display_name = join_args(argv + 1, argc - 1);
+				char *name = group ?
+					workspace_group_make_name(group, display_name) :
+					strdup(display_name);
+				ws = name ? workspace_create(NULL, name) : NULL;
+				free(display_name);
 				free(name);
 			}
 			if (ws && auto_back_and_forth) {

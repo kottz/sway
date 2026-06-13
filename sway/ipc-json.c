@@ -3,6 +3,7 @@
 #include <json.h>
 #include <libevdev/libevdev.h>
 #include <stdio.h>
+#include <strings.h>
 #include <wlr/config.h>
 #include <wlr/types/wlr_content_type_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -502,11 +503,12 @@ static json_object *ipc_json_describe_scratchpad_output(void) {
 static void ipc_json_describe_workspace(struct sway_workspace *workspace,
 		json_object *object) {
 	int num;
-	if (isdigit(workspace->name[0])) {
+	const char *display_name = workspace_get_display_name(workspace);
+	if (isdigit(display_name[0])) {
 		errno = 0;
 		char *endptr = NULL;
-		long long parsed_num = strtoll(workspace->name, &endptr, 10);
-		if (errno != 0 || parsed_num > INT32_MAX || parsed_num < 0 || endptr == workspace->name) {
+		long long parsed_num = strtoll(display_name, &endptr, 10);
+		if (errno != 0 || parsed_num > INT32_MAX || parsed_num < 0 || endptr == display_name) {
 			num = -1;
 		} else {
 			num = (int) parsed_num;
@@ -514,7 +516,17 @@ static void ipc_json_describe_workspace(struct sway_workspace *workspace,
 	} else {
 		num = -1;
 	}
+	const char *active_group = workspace_group_get_active();
 	json_object_object_add(object, "num", json_object_new_int(num));
+	json_object_object_add(object, "display_name",
+			json_object_new_string(display_name));
+	json_object_object_add(object, "group", workspace->group ?
+			json_object_new_string(workspace->group) : NULL);
+	json_object_object_add(object, "active_group", active_group ?
+			json_object_new_string(active_group) : NULL);
+	json_object_object_add(object, "group_active",
+			json_object_new_boolean(workspace->group && active_group &&
+				strcasecmp(workspace->group, active_group) == 0));
 	json_object_object_add(object, "fullscreen_mode", json_object_new_int(1));
 	json_object_object_add(object, "output", workspace->output ?
 			json_object_new_string(workspace->output->wlr_output->name) : NULL);
@@ -711,6 +723,18 @@ static void ipc_json_describe_view(struct sway_container *c, json_object *object
 static void ipc_json_describe_container(struct sway_container *c, json_object *object) {
 	json_object_object_add(object, "name",
 			c->title ? json_object_new_string(c->title) : NULL);
+	struct sway_workspace *workspace = c->pending.workspace;
+	const char *active_group = workspace_group_get_active();
+	json_object_object_add(object, "workspace_name", workspace && workspace->name ?
+			json_object_new_string(workspace->name) : NULL);
+	json_object_object_add(object, "workspace_display_name", workspace ?
+			json_object_new_string(workspace_get_display_name(workspace)) : NULL);
+	json_object_object_add(object, "workspace_group",
+			workspace && workspace->group ?
+			json_object_new_string(workspace->group) : NULL);
+	json_object_object_add(object, "workspace_group_active",
+			json_object_new_boolean(workspace && workspace->group &&
+				active_group && strcasecmp(workspace->group, active_group) == 0));
 	bool floating = container_is_floating(c);
 	if (floating) {
 		json_object_object_add(object, "type",

@@ -198,6 +198,8 @@ sway_cmd cmd_unbindsym;
 sway_cmd cmd_unmark;
 sway_cmd cmd_urgent;
 sway_cmd cmd_workspace;
+sway_cmd cmd_workspace_group_default;
+sway_cmd cmd_workspace_groups;
 sway_cmd cmd_workspace_layout;
 sway_cmd cmd_ws_auto_back_and_forth;
 sway_cmd cmd_xwayland;

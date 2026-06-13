@@ -1109,6 +1109,10 @@ static void set_workspace(struct sway_seat *seat,
 		}
 	}
 
+	if (new_ws && new_ws->group) {
+		workspace_group_remember_workspace(new_ws);
+		workspace_group_set_active(new_ws->group);
+	}
 	ipc_event_workspace(seat->workspace, new_ws, "focus");
 	seat->workspace = new_ws;
 }

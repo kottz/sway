@@ -489,6 +489,11 @@ enum xwayland_mode {
 /**
  * The configuration struct. The result of loading a config file.
  */
+struct workspace_group_state {
+	char *group;
+	char *display_name;
+};
+
 struct sway_config {
 	char *swaynag_command;
 	struct swaynag_instance swaynag_config_errors;
@@ -497,6 +502,8 @@ struct sway_config {
 	list_t *bars;
 	list_t *cmd_queue;
 	list_t *workspace_configs;
+	list_t *workspace_groups;
+	list_t *workspace_group_states;
 	list_t *output_configs;
 	list_t *input_configs;
 	list_t *input_type_configs;
@@ -544,6 +551,8 @@ struct sway_config {
 	bool reading;
 	bool validating;
 	bool auto_back_and_forth;
+	char *workspace_group_default;
+	char *active_workspace_group;
 	bool show_marks;
 	enum alignment title_align;
 	bool primary_selection;

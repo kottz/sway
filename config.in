@@ -112,6 +112,11 @@ output * bg @datadir@/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png fill
 #
 # Workspaces:
 #
+    # Optional grouped workspaces:
+    # workspace_groups work personal
+    # workspace_group_default work
+    # bindsym $mod+grave workspace group toggle
+    #
     # Switch to workspace
     bindsym $mod+1 workspace number 1
     bindsym $mod+2 workspace number 2

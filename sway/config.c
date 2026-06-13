@@ -25,6 +25,7 @@
 #include "sway/desktop/transaction.h"
 #include "sway/server.h"
 #include "sway/swaynag.h"
+#include "sway/output.h"
 #include "sway/tree/arrange.h"
 #include "sway/tree/root.h"
 #include "sway/tree/workspace.h"
@@ -133,6 +134,17 @@ void free_config(struct sway_config *config) {
 		}
 		list_free(config->workspace_configs);
 	}
+	list_free_items_and_destroy(config->workspace_groups);
+	if (config->workspace_group_states) {
+		for (int i = 0; i < config->workspace_group_states->length; i++) {
+			struct workspace_group_state *state =
+				config->workspace_group_states->items[i];
+			free(state->group);
+			free(state->display_name);
+			free(state);
+		}
+		list_free(config->workspace_group_states);
+	}
 	if (config->output_configs) {
 		for (int i = 0; i < config->output_configs->length; i++) {
 			free_output_config(config->output_configs->items[i]);
@@ -173,6 +185,8 @@ void free_config(struct sway_config *config) {
 	free(config->floating_scroll_down_cmd);
 	free(config->floating_scroll_left_cmd);
 	free(config->floating_scroll_right_cmd);
+	free(config->workspace_group_default);
+	free(config->active_workspace_group);
 	free(config->font);
 	free(config->swaybg_command);
 	free(config->swaynag_command);
@@ -219,6 +233,8 @@ static void config_defaults(struct sway_config *config) {
 	if (!(config->modes = create_list())) goto cleanup;
 	if (!(config->bars = create_list())) goto cleanup;
 	if (!(config->workspace_configs = create_list())) goto cleanup;
+	if (!(config->workspace_groups = create_list())) goto cleanup;
+	if (!(config->workspace_group_states = create_list())) goto cleanup;
 	if (!(config->criteria = create_list())) goto cleanup;
 	if (!(config->no_focus = create_list())) goto cleanup;
 	if (!(config->seat_configs = create_list())) goto cleanup;
@@ -549,6 +565,7 @@ bool load_main_config(const char *file, bool is_active, bool validating) {
 		free_config(old_config);
 	}
 	config->reading = false;
+	workspace_group_refresh_metadata();
 	return success;
 }
 

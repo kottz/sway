@@ -95,10 +95,11 @@ struct cmd_results *cmd_rename(int argc, char **argv) {
 
 	free(workspace->name);
 	workspace->name = new_name;
+	workspace_update_group_metadata(workspace);
+	workspace_group_refresh_metadata();
 
 	wlr_ext_workspace_handle_v1_set_name(workspace->ext_workspace, workspace->name);
 
-	output_sort_workspaces(workspace->output);
 	ipc_event_workspace(NULL, workspace, "rename");
 
 	return cmd_results_new(CMD_SUCCESS, NULL);

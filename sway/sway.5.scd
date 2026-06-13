@@ -257,6 +257,9 @@ set|plus|minus|toggle <amount>
 	is optional and is used to match a workspace with the same number, even if
 	it has a different name.
 
+*move* [container|window] [to] workspace group <group> [number] <name>
+	Moves the focused container to the specified workspace in _group_.
+
 *move* [container|window] [to] workspace prev|next|current
 	Moves the focused container to the previous, next or current workspace on
 	this output, or if no workspaces remain, the previous or next output.
@@ -938,6 +941,15 @@ The default colors are:
 	workspace with the number does not exist, a new workspace will be created
 	with the name _name_.
 
+	If *workspace_groups* is configured, *workspace number* uses the active
+	workspace group and creates an internal workspace named _group:name_ while
+	exposing _name_ as the display name over IPC.
+
+*workspace* group <group>|toggle
+	Sets the active workspace group, or toggles to the next configured group,
+	and switches to the last focused workspace in that group. If the target
+	group has no remembered workspace yet, workspace _1_ is used.
+
 *workspace* prev|next
 	Switches to the next workspace on the current output or on the next output
 	if currently on the last workspace.
@@ -973,6 +985,14 @@ The default colors are:
 	prior workspace. For example, if you are currently on workspace 1,
 	switch to workspace 2, then invoke the *workspace 2* command again, you
 	will be returned to workspace 1. Default is _no_.
+
+*workspace_groups* <group> [<group>...]
+	Enables native workspace groups. Grouped numeric workspace commands use
+	the active group, so *workspace number 1* targets _group:1_ internally
+	while IPC exposes display name _1_.
+
+*workspace_group_default* <group>
+	Sets the default active workspace group.
 
 # CRITERIA
 

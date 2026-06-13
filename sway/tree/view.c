@@ -653,7 +653,19 @@ static struct sway_workspace *select_workspace(struct sway_view *view) {
 						ws = workspace_create(NULL, seat->prev_workspace_name);
 					}
 				} else {
-					ws = workspace_create(NULL, criteria->target);
+					char *workspace_name = NULL;
+					if (criteria->type == CT_ASSIGN_WORKSPACE_NUMBER) {
+						const char *group = workspace_group_get_active();
+						workspace_name = group ?
+							workspace_group_make_name(group, criteria->target) :
+							strdup(criteria->target);
+					} else {
+						workspace_name = strdup(criteria->target);
+					}
+					if (workspace_name) {
+						ws = workspace_create(NULL, workspace_name);
+						free(workspace_name);
+					}
 				}
 			}
 			break;
